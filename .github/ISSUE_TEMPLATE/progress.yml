@@ -1,0 +1,93 @@
+name: Weekly Progress (Public)
+description: Track deliverables, metrics, and your public post
+title: "Week {{ week-number }} — Deliverables + Metrics"
+labels: ["progress", "public", "auto:scoreboard"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Week Overview
+        Fill this out through the week. Check in at least 3 times.
+  - type: input
+    id: weeknum
+    attributes:
+      label: Week Number
+      description: NN (01–16)
+      placeholder: "01"
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Shipped (links to PRs, repos, demos)
+      description: List concrete artifacts with URLs
+      placeholder: |
+        - PR: #
+        - Demo: https://...
+        - Notebook: ...
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Key Metrics
+      description: Latency, tokens/s, mAP/mIoU/Top-1, cost per 1k, GPU util, etc.
+      placeholder: |
+        - latency_p95_ms:
+        - tokens_per_s:
+        - mAP50:
+        - cost_per_1k_req:
+        - gpu_util_%:
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings
+      description: 1 surprise, 1 failure, 1 next bet
+      placeholder: |
+        - surprise:
+        - failure:
+        - next:
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklists
+    attributes:
+      label: Minimum weekly checkboxes
+      options:
+        - label: Reproduced 1 figure (paper/code) this week
+        - label: Ran 1 ablation or micro-benchmark
+        - label: Updated demo/service and perf sheet
+  - type: textarea
+    id: papers
+    attributes:
+      label: Papers / repos touched
+      placeholder: |
+        - Title (year) — 1 line takeaway
+    validations:
+      required: false
+  - type: input
+    id: linkedin
+    attributes:
+      label: LinkedIn post URL
+      placeholder: https://www.linkedin.com/...
+  - type: input
+    id: twitter
+    attributes:
+      label: Twitter/X post URL
+      placeholder: https://x.com/...
+  - type: checkboxes
+    id: publish
+    attributes:
+      label: Public post
+      options:
+        - label: I posted a weekly summary on LinkedIn or Twitter/X
+          required: false
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Risks / blockers
+      placeholder: short bullets
+

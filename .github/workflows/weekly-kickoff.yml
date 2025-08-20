@@ -1,0 +1,174 @@
+name: Weekly kickoff (create Week NN issue + update scoreboard)
+
+on:
+  schedule:
+    # 09:00 Africa/Lagos = 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: write
+
+env:
+  START_DATE: "2025-08-25"      # Monday you want Week 01 to start (YYYY-MM-DD)
+  TOTAL_WEEKS: "16"
+  PROJECT_V2_ENABLED: "true"    # "true" to add issues to a Projects v2 board
+  PROJECT_OWNER: "YOUR_GH_USERNAME_OR_ORG"
+  PROJECT_NUMBER: "1"           # Projects v2 number from the URL
+  TIMEZONE: "Africa/Lagos"      # for logs only
+
+jobs:
+  kickoff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute current week number
+        id: calc
+        run: |
+          start="${START_DATE}T00:00:00Z"
+          start_s=$(date -u -d "$start" +%s)
+          now_s=$(date -u +%s)
+          diff_days=$(( (now_s - start_s) / 86400 ))
+          if [ $diff_days -lt 0 ]; then
+            echo "week=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          week=$(( diff_days / 7 + 1 ))
+          echo "week=$week" >> $GITHUB_OUTPUT
+          echo "now=$(date -u)" >> $GITHUB_OUTPUT
+      - name: Stop if outside plan
+        if: ${{ steps.calc.outputs.week == '0' || fromJSON(steps.calc.outputs.week) > fromJSON(env.TOTAL_WEEKS) }}
+        run: |
+          echo "Outside plan window. START_DATE=${START_DATE}, computed week=${{ steps.calc.outputs.week }}."
+      - name: Create/find label and milestone
+        if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
+        id: meta
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const week = String(${{ steps.calc.outputs.week }}).padStart(2,'0');
+            const labelName = `week:${week}`;
+            // ensure label
+            try {
+              await github.rest.issues.getLabel({ owner: context.repo.owner, repo: context.repo.repo, name: labelName });
+            } catch {
+              await github.rest.issues.createLabel({ owner: context.repo.owner, repo: context.repo.repo, name: labelName, color: "0e8a16" });
+            }
+            // ensure milestone
+            const msTitle = `Week ${week}`;
+            const { data: milestones } = await github.rest.issues.listMilestones({ owner: context.repo.owner, repo: context.repo.repo, state: "open" });
+            let milestone = milestones.find(m => m.title === msTitle);
+            if (!milestone) {
+              milestone = (await github.rest.issues.createMilestone({ owner: context.repo.owner, repo: context.repo.repo, title: msTitle })).data;
+            }
+            core.setOutput("week", week);
+            core.setOutput("label", labelName);
+            core.setOutput("milestone_number", milestone.number.toString());
+      - name: Create Week issue if missing
+        if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const week = core.getInput('week', { required:false }) || "${{ steps.meta.outputs.week }}";
+            const title = `Week ${week} — Deliverables + Metrics`;
+            // search both open and closed
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, state: "all", per_page: 100, labels: `week:${week}`
+            });
+            let issue = existing.find(i => i.title.startsWith(`Week ${week} —`));
+            if (!issue) {
+              const body = [
+                `This is the public tracker for **Week ${week}**.`,
+                ``,
+                `- Milestone: Week ${week}`,
+                `- Label: week:${week}`,
+                ``,
+                `> Use the **Weekly Progress (Public)** issue form if you prefer structured fields.`,
+                `You can also just edit this body.`,
+                ``,
+                `## Shipped`,
+                `- `,
+                `## Key Metrics`,
+                `- `,
+                `## Findings`,
+                `- surprise:`,
+                `- failure:`,
+                `- next:`,
+                `## Public post`,
+                `- LinkedIn:`,
+                `- Twitter/X:`
+              ].join("\n");
+              issue = (await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body,
+                labels: ["progress","public","auto:scoreboard", `week:${week}`],
+                milestone: Number("${{ steps.meta.outputs.milestone_number }}")
+              })).data;
+            }
+            core.setOutput("issue_number", issue.number.toString());
+            core.setOutput("issue_html_url", issue.html_url);
+      - name: Add to Projects v2 (optional)
+        if: ${{ env.PROJECT_V2_ENABLED == 'true' && steps.issue.outputs.issue_number }}
+        uses: actions/github-script@v7
+        env:
+          PROJECT_PAT: ${{ secrets.PROJECT_PAT }}
+        with:
+          script: |
+            const token = process.env.PROJECT_PAT || core.getInput('token') || process.env.GITHUB_TOKEN;
+            const octo = new (require("@octokit/core").Octokit)({ auth: token });
+            const owner = process.env.PROJECT_OWNER;
+            const number = Number(process.env.PROJECT_NUMBER);
+            // get project id
+            const queryId = `
+              query($login:String!, $number:Int!){
+                user(login:$login){ projectV2(number:$number){ id } }
+                organization(login:$login){ projectV2(number:$number){ id } }
+              }`;
+            const r = await octo.graphql(queryId, { login: owner, number });
+            const projectId = r.user?.projectV2?.id || r.organization?.projectV2?.id;
+            if (!projectId) {
+              core.warning(`Could not resolve Projects v2 id for ${owner} #${number}. Skipping.`);
+              return;
+            }
+            // get issue id
+            const { data: issue } = await github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: Number("${{ steps.issue.outputs.issue_number }}") });
+            const issueNodeId = issue.node_id;
+            // add item
+            const addMutation = `
+              mutation($projectId:ID!, $contentId:ID!){
+                addProjectV2ItemById(input:{projectId:$projectId, contentId:$contentId}){ item { id } }
+              }`;
+            await octo.graphql(addMutation, { projectId, contentId: issueNodeId });
+      - name: Update SCOREBOARD.md
+        if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const total = Number(process.env.TOTAL_WEEKS);
+            const weeks = Array.from({length: total}, (_,i)=>String(i+1).padStart(2,'0'));
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, state: "all", per_page: 100, labels: "auto:scoreboard"
+            });
+            const byWeek = {};
+            for (const w of weeks) {
+              const issue = allIssues.find(i => i.labels.some(l => l.name === `week:${w}`));
+              if (!issue) byWeek[w] = { status: "—", link: "" };
+              else byWeek[w] = { status: issue.state === "closed" ? "✅" : "⏳", link: `[Week ${w}](${issue.html_url})` };
+            }
+            const rows = weeks.map(w => `| ${w} | ${byWeek[w].status} | ${byWeek[w].link} |`).join("\n");
+            const content = `# 16-Week Scoreboard\n\nUpdated: ${new Date().toISOString()}\n\n| Week | Status | Issue |\n|---|---|---|\n${rows}\n`;
+            // create or update file
+            const path = "SCOREBOARD.md";
+            let sha;
+            try {
+              const { data } = await github.rest.repos.getContent({ owner: context.repo.owner, repo: context.repo.repo, path });
+              sha = data.sha;
+            } catch {}
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner, repo: context.repo.repo, path,
+              message: "chore: update scoreboard",
+              content: Buffer.from(content, "utf8").toString("base64"),
+              sha
+            });
+

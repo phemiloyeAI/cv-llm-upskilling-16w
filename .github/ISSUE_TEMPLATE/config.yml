@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions / Ideas
+    url: https://github.com/${{ github.repository }}/discussions
+    about: Use Discussions for anything not tied to a specific week
+
