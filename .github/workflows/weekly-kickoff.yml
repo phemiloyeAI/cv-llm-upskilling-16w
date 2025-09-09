@@ -43,7 +43,7 @@ jobs:
       - name: Create/find label and milestone
         if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
         id: meta
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const week = String(${{ steps.calc.outputs.week }}).padStart(2,'0');
@@ -67,7 +67,7 @@ jobs:
       - name: Create Week issue if missing
         if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
         id: issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const week = core.getInput('week', { required:false }) || "${{ steps.meta.outputs.week }}";
@@ -110,7 +110,7 @@ jobs:
             core.setOutput("issue_html_url", issue.html_url);
       - name: Add to Projects v2 (optional)
         if: ${{ env.PROJECT_V2_ENABLED == 'true' && steps.issue.outputs.issue_number }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PROJECT_PAT: ${{ secrets.PROJECT_PAT }}
         with:
@@ -142,7 +142,7 @@ jobs:
             await octo.graphql(addMutation, { projectId, contentId: issueNodeId });
       - name: Update SCOREBOARD.md
         if: ${{ steps.calc.outputs.week != '0' && fromJSON(steps.calc.outputs.week) <= fromJSON(env.TOTAL_WEEKS) }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const total = Number(process.env.TOTAL_WEEKS);
