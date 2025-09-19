@@ -71,4 +71,3 @@ if __name__ == '__main__':
     assert sum(online_softmax(vec)) == sum(softmax(vec)), 'online softmax and vanila softmax do not give the same results'
     print('Passed!')
     
-# qdd 
