@@ -78,13 +78,6 @@ class FlashAttention(nn.Module):
             self.bc, self.br
         )
     
-def check_correct(flash_out, sdpa_out, atol=1e-4, rtol=1e-3):
-    with torch.no_grad():
-        max_abs = (flash_out - sdpa_out).abs().max().item()
-        max_rel = ((flash_out - sdpa_out).abs() / (sdpa_out.abs() + 1e-8)).max().item()
-    return max_abs, max_rel
-
-
 def sdpa(Q, K, V):
     return F.scaled_dot_product_attention(Q, K, V, attn_mask=None, dropout_p=0.0, is_causal=False)
 
@@ -97,7 +90,7 @@ if __name__ == "__main__":
 
     sdpa_out = sdpa(q, k, v)
 
-    max_abs, max_rel = check_correct(flash_out, sdpa_out)
-    print(f"max_abs={max_abs:.3e}  max_rel={max_rel:.3e}")
+    abs_tol, rel_tol = 1e-2, 0.0
+    assert torch.allclose(flash_out, sdpa_out, rtol=rel_tol, atol=abs_tol)
 
 
